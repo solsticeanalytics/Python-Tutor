@@ -11,7 +11,7 @@ class Manufacturer(Enum):
     HONDA = 2
     FORD = 3
     BMW = 4
-    MERCEDES = 5,
+    MERCEDES = 5
     OTHER = 6
     
 class Auto:
