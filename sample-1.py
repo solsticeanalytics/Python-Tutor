@@ -15,16 +15,21 @@ class Manufacturer(Enum):
     OTHER = 6
     
 class Auto:
+    # Class variable
     wheels: int = 4
     
+    # Constructor
     def __init__(self, color: Color, make: Manufacturer, model:str):
+        # Instance variable
         self.color = color
         self.make = make
         self.model = model
-        
+    
+    # Instance method    
     def get_details(self):
         print(f"Auto: {self.make} {self.color} {self.model} wheels: {self.wheels}")
-        
+    
+    # Static method    
     @staticmethod
     def get_top_dealers(n):
 
