@@ -1,12 +1,12 @@
 from constants import Color, Manufacturer, auto_dealers
 
 class Auto:
-    # Class variable
+
     wheels: int = 4
     
     # Constructor
     def __init__(self, color: Color, make: Manufacturer, model:str) -> None:
-        # Instance variable
+
         self.color = color
         self.make = make
         self.model = model
