@@ -139,9 +139,10 @@ async def websocket_endpoint(websocket: WebSocket):
     connection_id = str(uuid.uuid4())
     connection_messages[connection_id] = []
     counter = 0
+    is_connected = True
     
     try:
-        while True:
+        while is_connected:
             # Check for incoming messages
             try:
                 data = await asyncio.wait_for(websocket.receive_json(), timeout=0.1)
@@ -154,29 +155,32 @@ async def websocket_endpoint(websocket: WebSocket):
                         "type": "user_message"
                     })
             except asyncio.TimeoutError:
-                pass
-            except:
-                if len(connection_messages[connection_id]) > 0:
+                # Send heartbeat message on timeout
+                try:
+                    counter += 1
                     await websocket.send_json({
-                        "message": connection_messages[connection_id][-1],
+                        "message": f"Message {counter}",
                         "connection_id": connection_id,
-                        "type": "user_message"
+                        "type": "heartbeat"
                     })
-                    connection_messages[connection_id].clear()
+                except:
+                    is_connected = False
+                    break
+            except Exception as e:
+                # Client disconnected or other error
+                is_connected = False
+                break
             
-            # Send heartbeat message
-            counter += 1
-            await websocket.send_json({
-                "message": f"Message {counter}",
-                "connection_id": connection_id,
-                "type": "heartbeat"
-            })
             await asyncio.sleep(1)
-    except:
-        await websocket.close()
+    except Exception as e:
+        # Handle any unexpected errors
+        print(f"WebSocket error: {str(e)}")
     finally:
+        # Cleanup connection data
         if connection_id in connection_messages:
             del connection_messages[connection_id]
+        if connection_id in active_connections:
+            del active_connections[connection_id]
 
 if __name__ == "__main__":
     import uvicorn
