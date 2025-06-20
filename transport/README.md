@@ -1,127 +1,141 @@
-# Long Polling Implementation Demo
+# Data Transport Methods Demo
 
-This project demonstrates a complete implementation of the Long Polling transport protocol using FastAPI (server) and JavaScript (client). The implementation showcases all key features of the Long Polling pattern.
+This project demonstrates three real-time data transport protocols using FastAPI (server) and JavaScript (client):
 
-## Long Polling Protocol Features
+- **Long Polling**
+- **Server-Sent Events (SSE)**
+- **WebSocket**
 
-1. **Connection Establishment**
-   - Client initiates a connection with a POST request
-   - Server generates a unique connection ID
-   - Connection state is maintained on the server
-   - Client stores the connection ID for subsequent requests
+Each method is fully implemented and can be tested from the included HTML client.
 
-2. **Message Handling**
-   - Immediate response if data is available
-   - Connection holding if no data is available
-   - Message queuing for reliable delivery
-   - Support for both server-to-client and client-to-server messages
+## Overview of Transport Methods
 
-3. **Timeout Management**
-   - Server holds connection for max 30 seconds
-   - Client automatically reconnects after timeout
-   - Graceful timeout handling with status messages
+### 1. Long Polling
 
-4. **Connection State Tracking**
-   - Last seen time tracking
-   - Message count tracking
-   - Connection status monitoring
-   - Error state handling
+- Client sends a POST request to establish a connection and receives a unique connection ID.
+- Server holds the connection open if no data is available, or responds immediately if there is data.
+- Supports message queuing, timeouts, and connection state tracking.
 
-5. **Message Types**
-   - `message`: New message sent by client
-   - `queued_message`: Previously queued message delivery
-   - `new_message`: Real-time message delivery
-   - `timeout`: No messages available notification
-   - `error`: Connection error notification
+### 2. Server-Sent Events (SSE)
+
+- Client opens a persistent HTTP connection to receive a stream of events from the server.
+- Messages are sent from server to client as they become available.
+- Heartbeat messages are sent periodically to keep the connection alive.
+- Client can send messages to the server via a POST endpoint.
+
+### 3. WebSocket
+
+- Client establishes a full-duplex WebSocket connection.
+- Supports real-time, bidirectional communication.
+- Heartbeat messages are sent from server to client.
+- Each connection is isolated and messages are scoped per connection.
 
 ## How to Run
 
 1. Start the server:
+
    ```bash
    python transport_server.py
    ```
 
 2. Open the client:
+
    - Open `transport_client.html` in a web browser
-   - Click "Start" in the Long Polling section
+   - Use the "Start" button in any of the three sections (Long Polling, SSE, WebSocket) to initiate a connection
 
 ## Testing the Features
 
+For each transport method, you can:
+
 1. **Basic Connection**
-   - Click "Start" in Long Polling section
-   - Observe the connection ID message
-   - Notice periodic timeout messages when no data is available
+   - Click "Start" in the desired section
+   - Observe the connection ID or initial message
+   - For Long Polling and SSE, notice periodic heartbeat or timeout messages
 
 2. **Message Sending**
    - Type a message in the input field
    - Click "Send"
-   - Observe immediate message delivery
+   - Observe immediate message delivery in the message area
 
 3. **Multiple Clients**
    - Open multiple browser tabs
-   - Start Long Polling in each
-   - Observe separate connection IDs
-   - Send messages from different tabs
-   - Verify messages stay within their connections
+   - Start connections in each tab (for any method)
+   - Observe separate connection IDs/messages
+   - Send messages from different tabs and verify isolation
 
 4. **Connection Handling**
    - Close a browser tab
-   - Observe server cleanup
+   - Observe server cleanup (where applicable)
    - Reopen and reconnect
    - Verify new connection establishment
 
-5. **Message Queueing**
+5. **Message Queueing and Ordering**
    - Send multiple messages quickly
-   - Observe ordered delivery
-   - Notice message timestamps
+   - Observe ordered delivery and timestamps
 
 ## Protocol Flow
 
-1. **Initial Connection**
-   ```
-   Client → Server: POST /poll
-   Server → Client: {connection_id: "uuid", type: "timeout"}
-   ```
+### Long Polling
 
-2. **Send Message**
-   ```
-   Client → Server: POST /poll {text: "message", connection_id: "uuid"}
-   Server → Client: {message: "text", type: "message"}
-   ```
+```text
+Client → Server: POST /poll
+Server → Client: {connection_id: "uuid", type: "timeout"}
 
-3. **Long Poll Request**
-   ```
-   Client → Server: POST /poll {connection_id: "uuid"}
-   ... server holds connection ...
-   Server → Client: {message: "data"} or timeout after 30s
-   ```
+Client → Server: POST /poll {text: "message", connection_id: "uuid"}
+Server → Client: {message: "text", type: "message"}
+
+Client → Server: POST /poll {connection_id: "uuid"}
+... server holds connection ...
+Server → Client: {message: "data"} or timeout after 30s
+```
+
+### Server-Sent Events (SSE)
+
+```text
+Client → Server: GET /sse (opens event stream)
+Server → Client: data: {message: "...", connection_id: "uuid"}
+
+Client → Server: POST /sse/message {text: "message", connection_id: "uuid"}
+Server → Client: (message is queued and sent on next event)
+```
+
+### WebSocket
+
+```text
+Client → Server: WebSocket /ws (opens connection)
+Server → Client: {message: "Message N", connection_id: "uuid", type: "heartbeat"}
+
+Client → Server: {message: "text"}
+Server → Client: {message: "text", connection_id: "uuid", type: "user_message"}
+```
 
 ## Implementation Details
 
 ### Server-Side Features
-- Connection tracking using dictionaries
-- Message queuing per connection
-- Timeout handling with asyncio
-- Error handling and recovery
-- Connection cleanup
+
+- Connection tracking and message queuing per connection
+- Timeout and heartbeat handling with asyncio
+- Error handling and connection cleanup
+- Three separate endpoints for Long Polling, SSE, and WebSocket
 
 ### Client-Side Features
-- Automatic reconnection
+
+- Automatic reconnection (where applicable)
 - Connection ID management
 - Error handling and retry logic
 - Message display with timestamps
 - Clean connection termination
+- Unified UI for all three transport methods
 
 ## Best Practices Demonstrated
 
 1. **Reliability**
    - Unique connection IDs
-   - Message queuing
-   - Error handling
-   - Automatic reconnection
+   - Message queuing and delivery guarantees
+   - Error handling and reconnection
 
 2. **Performance**
-   - Efficient connection holding
+   - Efficient connection holding and event streaming
    - Quick response for available data
    - Proper connection cleanup
 
@@ -138,9 +152,9 @@ This project demonstrates a complete implementation of the Long Polling transpor
 ## Common Issues and Solutions
 
 1. **Lost Connections**
-   - Server detects timeouts
-   - Client automatically reconnects
-   - Messages are preserved in queue
+   - Server detects timeouts and cleans up
+   - Client can reconnect automatically
+   - Messages are preserved in queue (where applicable)
 
 2. **Message Ordering**
    - FIFO queue implementation
