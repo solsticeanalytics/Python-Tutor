@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Data Transport Methods Demo</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .container {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 20px;
+        }
+        .method {
+            border: 1px solid #ccc;
+            padding: 15px;
+            border-radius: 5px;
+        }
+        .messages {
+            height: 200px;
+            overflow-y: auto;
+            border: 1px solid #eee;
+            padding: 10px;
+            margin: 10px 0;
+            background-color: #f9f9f9;
+        }
+        button {
+            padding: 8px 16px;
+            background-color: #007bff;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 0 5px;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        .method-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+        .input-group {
+            display: flex;
+            margin-top: 10px;
+        }
+        input {
+            flex: 1;
+            padding: 8px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            margin-right: 5px;
+        }
+    </style>
+</head>
+<body>
+    <h1>Data Transport Methods Demo</h1>
+
+    <div class="container">
+        <!-- Long Polling -->
+        <div class="method">
+            <div class="method-header">
+                <h2>Long Polling</h2>
+                <button onclick="startLongPolling()">Start</button>
+            </div>
+            <div id="longPollingMessages" class="messages"></div>
+            <div class="input-group">
+                <input type="text" id="longPollingInput" placeholder="Enter message">
+                <button onclick="sendLongPollingMessage()">Send</button>
+            </div>
+        </div>
+
+        <!-- Server-Sent Events -->
+        <div class="method">
+            <div class="method-header">
+                <h2>Server-Sent Events</h2>
+                <button onclick="startSSE()">Start</button>
+            </div>
+            <div id="sseMessages" class="messages"></div>
+            <div class="input-group">
+                <input type="text" id="sseInput" placeholder="Enter message">
+                <button onclick="sendSSEMessage()">Send</button>
+            </div>
+        </div>
+
+        <!-- WebSocket -->
+        <div class="method">
+            <div class="method-header">
+                <h2>WebSocket</h2>
+                <button onclick="startWebSocket()">Start</button>
+            </div>
+            <div id="wsMessages" class="messages"></div>
+            <div class="input-group">
+                <input type="text" id="wsInput" placeholder="Enter message">
+                <button onclick="sendWebSocketMessage()">Send</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const BASE_URL = 'http://localhost:8000';
+        let longPollingId = null;
+        let sseId = null;
+        let wsConnection = null;
+        let isLongPolling = false;
+        
+        // Helper function to add messages to containers
+        function addMessage(containerId, message) {
+            const container = document.getElementById(containerId);
+            const messageElement = document.createElement('div');
+            messageElement.textContent = message;
+            container.appendChild(messageElement);
+            container.scrollTop = container.scrollHeight;
+        }        // 1. Long Polling Implementation
+        async function startLongPolling() {
+            const messagesContainer = document.getElementById('longPollingMessages');
+            messagesContainer.innerHTML = '';
+            isLongPolling = true;
+            let reconnectAttempts = 0;
+            const maxReconnectAttempts = 5;
+            
+            async function connect() {
+                try {
+                    const response = await fetch(`${BASE_URL}/poll`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        }
+                    });
+                    const data = await response.json();
+                    longPollingId = data.connection_id;
+                    addMessage('longPollingMessages', `Connected with ID: ${longPollingId}`);
+                    reconnectAttempts = 0; // Reset counter on successful connection
+                    return true;
+                } catch (error) {
+                    console.error('Long polling connection error:', error);
+                    reconnectAttempts++;
+                    if (reconnectAttempts < maxReconnectAttempts) {
+                        addMessage('longPollingMessages', `Connection failed. Retrying (${reconnectAttempts}/${maxReconnectAttempts})...`);
+                        await new Promise(resolve => setTimeout(resolve, 1000 * reconnectAttempts));
+                        return false;
+                    } else {
+                        addMessage('longPollingMessages', 'Connection failed after maximum retries. Please try again.');
+                        isLongPolling = false;
+                        return false;
+                    }
+                }
+            }
+            
+            // Initial connection
+            if (!await connect()) return;
+            
+            // Start polling loop
+            while (isLongPolling) {
+                try {
+                    const response = await fetch(`${BASE_URL}/poll`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({
+                            connection_id: longPollingId
+                        })
+                    });
+                    const data = await response.json();
+                    
+                    // Handle different message types
+                    switch (data.type) {
+                        case 'message':
+                        case 'queued_message':
+                        case 'new_message':
+                            addMessage('longPollingMessages', `${data.type}: ${data.message}`);
+                            break;
+                        case 'timeout':
+                            // Don't display timeout messages to keep the UI clean
+                            break;
+                        case 'error':
+                            addMessage('longPollingMessages', `Error: ${data.message}`);
+                            if (!await connect()) return;
+                            break;
+                    }
+                } catch (error) {
+                    console.error('Long polling error:', error);
+                    if (isLongPolling) {
+                        if (!await connect()) return;
+                    }
+                }
+            }
+        }
+
+        async function sendLongPollingMessage() {
+            const input = document.getElementById('longPollingInput');
+            const message = input.value.trim();
+            if (!message || !longPollingId) {
+                if (!longPollingId) {
+                    addMessage('longPollingMessages', 'Please start long polling before sending messages');
+                }
+                return;
+            }
+
+            try {
+                input.value = '';
+                const response = await fetch(`${BASE_URL}/poll`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        text: message,
+                        connection_id: longPollingId
+                    })
+                });
+                const data = await response.json();
+                if (data.type === 'error') {
+                    addMessage('longPollingMessages', `Error sending message: ${data.message}`);
+                }
+            } catch (error) {
+                console.error('Error sending message:', error);
+                addMessage('longPollingMessages', 'Error sending message. Please try again.');
+            }
+        }
+
+        // 2. Server-Sent Events Implementation
+        function startSSE() {
+            const messagesContainer = document.getElementById('sseMessages');
+            messagesContainer.innerHTML = '';
+            
+            const eventSource = new EventSource(`${BASE_URL}/sse`);
+            
+            eventSource.onmessage = (event) => {
+                const data = JSON.parse(event.data);
+                if (!sseId) {
+                    sseId = data.connection_id;
+                }
+                addMessage('sseMessages', data.message);
+            };
+
+            eventSource.onerror = (error) => {
+                console.error('SSE error:', error);
+                eventSource.close();
+            };
+        }
+
+        async function sendSSEMessage() {
+            const input = document.getElementById('sseInput');
+            const message = input.value;
+            if (!message || !sseId) return;
+
+            try {
+                const response = await fetch(`${BASE_URL}/sse/message`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        text: message,
+                        connection_id: sseId
+                    })
+                });
+                input.value = '';
+            } catch (error) {
+                console.error('Error sending message:', error);
+            }
+        }
+
+        // 3. WebSocket Implementation
+        function startWebSocket() {
+            const messagesContainer = document.getElementById('wsMessages');
+            messagesContainer.innerHTML = '';
+            
+            wsConnection = new WebSocket(`ws://localhost:8000/ws`);
+            
+            wsConnection.onmessage = (event) => {
+                const data = JSON.parse(event.data);
+                addMessage('wsMessages', data.message);
+            };
+
+            wsConnection.onerror = (error) => {
+                console.error('WebSocket error:', error);
+            };
+
+            wsConnection.onclose = () => {
+                wsConnection = null;
+            };
+        }
+
+        function sendWebSocketMessage() {
+            const input = document.getElementById('wsInput');
+            const message = input.value;
+            if (!message || !wsConnection) return;
+
+            wsConnection.send(JSON.stringify({ message }));
+            input.value = '';
+        }
+    </script>
+</body>
+</html>
